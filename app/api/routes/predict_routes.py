@@ -10,7 +10,7 @@ from app.core.enums.roles_enum import RoleEnum
 router = APIRouter(
     prefix="/predict",
     tags=["Predict"],
-    dependencies=[Depends(verify_role([]))],
+    # dependencies=[Depends(verify_role([]))],
 )
 
 
@@ -18,7 +18,7 @@ router = APIRouter(
 async def predict_route(
     request: PredictRequestSchema,
     controller: PredictController = Depends(),
-    user_role: str = Depends(verify_role([RoleEnum.BACKEND.value])),
+    # user_role: str = Depends(verify_role([RoleEnum.BACKEND.value])),
 ):
     """
     Predict the closing price of a list of stocks with model path, scaler path, and closing prices using the ML model.

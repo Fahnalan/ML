@@ -8,14 +8,17 @@ from app.core.enums.roles_enum import RoleEnum
 router = APIRouter(
     prefix="/general",
     tags=["General"],
-    dependencies=[Depends(verify_role([]))],
+    # dependencies=[Depends(verify_role([]))],
 )
 
 
 @router.get("/health")
-async def health_check(user_role: str = Depends(verify_role([RoleEnum.BACKEND.value]))):
+async def health_check(
+    # user_role: str = Depends(verify_role([RoleEnum.BACKEND.value]))
+    ):
     return await success_response(
-        message="ML server is healthy", data={"role": user_role}
+        message="ML server is healthy",
+        #   data={"role": user_role}
     )
 
 

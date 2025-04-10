@@ -1,11 +1,13 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
 
 class StockToPredictRequestSchema(BaseModel):
-    stock_tickers: str
-    closing_prices: List[float]
+    stock_ticker: str
+    close: list[float]
+    volumes: Optional[list[int]] = []
+    model_id: int
     model_path: str
     scaler_path: str
 

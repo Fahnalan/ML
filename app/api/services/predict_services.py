@@ -26,7 +26,6 @@ class PredictService:
     ):
         self.be_operations = be_operations
 
-    # TODO: combine all logics + (pls modify as necessary) + improve performance
     async def predict(self, request: PredictRequestSchema) -> PredictResponseSchema:
         """
         Perform inference using the model
@@ -39,14 +38,22 @@ class PredictService:
             await self.load_model_with_path(model_path=stock.model_path)
             await self.load_scaler_with_path(scaler_path=stock.scaler_path)
 
-            normalized = await self.normalize_prices(prices=stock.closing_prices)
-            predicted_normalized = await self.run_inference(normalized_closing_prices=normalized)
-            predicted = await self.denormalize_prices(normalized_prices=predicted_normalized)
+            num_features = PredictService.scaler.n_features_in_
+
+            if num_features == 1:
+                normalized_input = await self.normalize_prices(close=stock.close)
+            elif num_features == 2:
+                normalized_input = await self.normalize_prices(close=stock.close, volumes=stock.volumes)
+            else:
+                raise ValueError(f"Unsupported number of input features: {num_features}")
+
+            normalized_predictions = await self.run_inference(normalized_features=normalized_input)
+            final_predictions = await self.denormalize_prices(normalized_prices=normalized_predictions)
 
             response_list.append(
                 StockFromPredictResponseSchema(
-                    stock_ticker=stock.stock_tickers,
-                    predicted_prices=predicted,
+                    stock_ticker=stock.stock_ticker,
+                    predicted_prices=final_predictions,
                 )
             )
 
@@ -97,7 +104,7 @@ class PredictService:
         return None
 
     @staticmethod
-    async def normalize_prices(prices: List[float], volumes: Optional[List[float]] = None) -> np.ndarray:
+    async def normalize_prices(close: List[float], volumes: Optional[List[float]] = None) -> np.ndarray:
         """
         call the loaded scaler to normalize a list of closing prices
         :param prices: [100, 101, 102, ...]
@@ -106,28 +113,28 @@ class PredictService:
         if PredictService.scaler is None:
             raise ValueError("Scaler not loaded. Please load it before normalization.")
         
-        if len(prices) < 60:
+        if len(close) < 60:
             raise ValueError("Not enough data points for normalization. Need at least 60.")
         
         num_features = PredictService.scaler.n_features_in_
         if num_features == 1:
             # Only close prices
-            if len(prices) != 60:
+            if len(close) != 60:
                 raise ValueError("Expected 60 prices for input")
-            input_array = np.array(prices).reshape(-1, 1)  # shape: (60, 1)
+            input_array = np.array(close).reshape(-1, 1)  # shape: (60, 1)
 
         elif num_features == 2:
             # Close and Volume
-            if volumes is None or len(prices) != 60 or len(volumes) != 60:
+            if volumes is None or len(close) != 60 or len(volumes) != 60:
                 raise ValueError("Expected 60 prices and 60 volumes for input")
-            input_array = np.column_stack((prices, volumes))  # shape: (60, 2)
+            input_array = np.column_stack((close, volumes))  # shape: (60, 2)
 
         else:
             raise ValueError(f"Unsupported number of features: {num_features}")
         
         # Normalize and reshape to (1, 60, num_features)
-        normalized_closing_prices = PredictService.scaler.transform(input_array)
-        return normalized_closing_prices.reshape(1, 60, num_features)
+        normalized_features = PredictService.scaler.transform(input_array)
+        return normalized_features.reshape(1, 60, num_features)
 
     @staticmethod
     async def denormalize_prices(
@@ -158,17 +165,17 @@ class PredictService:
             raise RuntimeError(f"Error in denormalizing prices: {e}")
 
     @staticmethod
-    async def run_inference(normalized_closing_prices: List[List[float]], days_ahead: int = 16) -> List[float]:
+    async def run_inference(normalized_features: List[List[float]], days_ahead: int = 16) -> List[float]:
         """
         run inference on the loaded model to predict with a list of closing prices
-        :param normalized_closing_prices:
-        :return normalized_predicted_prices:
+        :param normalized_features:
+        :return normalized_features:
         """
         try:
             if PredictService.model is None or PredictService.scaler is None:
                 raise ValueError("Model or scaler not loaded. Please load it before inference.")
 
-            sequence = np.array(normalized_closing_prices).reshape(60, -1)  # shape: (60, num_features)
+            sequence = np.array(normalized_features).reshape(60, -1)  # shape: (60, num_features)
             predictions = []
             num_features = PredictService.scaler.n_features_in_
 
@@ -185,6 +192,7 @@ class PredictService:
                 sequence = np.vstack([sequence, next_input])
 
             return [float(pred) for pred in predictions]
+        
         except Exception as e:
             print(f"Error in run_inference: {e}")
             raise RuntimeError(f"Inference failed: {e}")
